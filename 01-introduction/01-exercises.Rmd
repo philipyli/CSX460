@@ -22,12 +22,22 @@ Write a function (f) that takes a vector of numbers, **x**, and returns a vector
 ### Solution 
 
 ```{r}
-f <- function(x) {
-  
-  # ...
-  
-}
 
+  ex1function <- function(x) {
+    ifelse(x==0,
+      prod(replace(x, x==0, 1)),           
+      prod(x)/x)
+  }
+
+  ## running function with sample vector  
+  inputVector <- c( 1, 5, 2, 8 )
+  ex1function(inputVector)
+
+  ## running function with zeroes in vector
+  inputVector <- c( 1, 5, 0, 8 )
+  ex1function(inputVector)
+  
+  
 ```
     
 
@@ -49,8 +59,17 @@ Write a function f(x) to accept an integer vector, and returns a vector with tho
 ### Solution
 
 ```{r}
-f <- function(x) {
-  # ...
-  
-}
+
+  ex2function <- function(x)  {
+    ifelse(x%%15 == 0,
+      "FizzBuzz",
+      ifelse(x%%5 == 0,    
+        "Buzz",
+        ifelse(x%%3 == 0,
+          "Fizz", x)))
+  }
+
+  inputVector <- 1:20
+  ex2function(inputVector)
+
 ```
