@@ -50,7 +50,7 @@ naive_guess <- mean(dat$FE)
 - plot FE (Fuel Econonomy) vs. EngDisp. Plot the naive guess.
 
 ```{r}
-# ... ggplot2  
+qplot( y=dat$FE, x=dat$EngDispl ) + geom_hline(yintercept=naive_guess)
 ```
 
 - Sample 10 observations from `dat`
@@ -63,9 +63,10 @@ set.seed(314)
 
 # Sample 
 samp <- dat %>% dplyr::sample_n(10) 
+samp_naive_guess <- mean(samp$FE)
 
 # Plots 
-...
+qplot( y=samp$FE, x=samp$EngDispl ) + geom_hline(yintercept=samp_naive_guess)
 
 
 ```
@@ -85,15 +86,15 @@ All functions should accept two arguments:
 ```{r}
 
 rmse <- function(y,yhat) {
-  ( y - yhat )^2  %>% mean   %>% sqrt 
+  ( y - yhat )^2  %>% mean %>% sqrt 
 }
 
 mae <- function(y, yhat) {
-  # ...
+  ( y - yhat )  %>% abs %>% mean
 }
 
 medae <- function(y, yhat) { 
-  # ...
+  ( y - yhat )  %>% abs %>% median
 }
 
 ```
@@ -102,6 +103,14 @@ Use these functions to evaluate the loss/performance of:
 - the naive guess
 
 
+```{r}
+
+rmse(dat$FE, naive_guess)
+mae(dat$FE, naive_guess)
+medae(dat$FE, naive_guess)
+
+```
+
 
 ## Exercise 3: Linear Model and Model Performance 
 
@@ -109,32 +118,40 @@ Use these functions to evaluate the loss/performance of:
 
 
 ```{r}
-fit.2010 <- ... 
+fit_2010 <- lm(FE ~ EngDispl, data = cars2010) 
 ```
 
 - Use your functions to evaluate the training error
+
+```{r}
+y_2010 <- predict( fit_2010, data=cars2010 ) 
+rmse_2010 <- rmse(cars2010$FE, y_2010)
+
+mae(cars2010$FE, y_2010)
+medae(cars2010$FE, y_2010)
+```
+
+
 - Use your model to:
 -- predict the FE for 2011. What is the RMSE errors associated with the predictions.
 -- predict the FE for 2012. What is the RMSE errors associated with the predictions.
 
 ```{r}
+y_2011 <- predict( fit_2010, data=cars2011 ) 
+y_2012 <- predict( fit_2010, data=cars2012 )
 
-y.2010 <- ... 
-y.2011 <- ... 
-y.2012 <- ...
+rmse_2011 <- rmse(cars2011$FE, y_2011)
+rmse_2012 <- rmse(cars2012$FE, y_2012)
 
-rmse.2010 <- ...
-rmse.2011 <- ...
-rmse.2012 <- ... 
 
 ```
 
 
 ```{r}
 # DO NOT EDIT 
-rmse.2010 
-rmse.2011
-rmse.2012
+rmse_2010 
+rmse_2011
+rmse_2012
 ```
 
 
@@ -145,6 +162,7 @@ rmse.2012
 
 
 ```{r}
-fit.2010 <- ...
-betas <- ...
+fit_more_2011 <- lm(FE ~ EngDispl + NumCyl + VarValveTiming + VarValveLift, data = cars2011) 
+betas <- summary(fit_more_2011)$coefficient[,1]
+betas
 ```
