@@ -1,6 +1,6 @@
 ---
 title: "03-exercises"
-author: "Your Name Here"
+author: "Phil Li"
 date: "April 20, 2016"
 output: html_document
 ---
@@ -10,7 +10,7 @@ output: html_document
 ***APM***
 
 - Chapter 4 "Over Fitting and Model Tuning"
-- Chapter 12.2 "Logisitic Regression""
+- Chapter 12.2 "Logistic Regression""
 
 
 ## Miscellaneous
@@ -18,6 +18,7 @@ output: html_document
 I am still struggling with names ...
 
 - Please send me your picture
+- [my photo here!](https://media.licdn.com/mpr/mpr/shrinknp_400_400/p/5/000/229/29f/3b94812.jpg)
 
 
 ## Assignment 
@@ -27,7 +28,7 @@ Note: The following will set-up your environment for this exercise. If you get a
 
 ```{r,echo=FALSE, warning=FALSE, message=FALSE}
 
-packs <-  c('AppliedPredictiveModeling', 'ggplot2', 'magrittr', 'dplyr', 'caret', 'MASS')
+packs <-  c('AppliedPredictiveModeling', 'ggplot2', 'magrittr', 'dplyr', 'caret')
 
 for( nm in packs ) { 
   # message(nm)
@@ -52,26 +53,70 @@ data("GermanCredit")  # see GermanCredit
 
 Using Fuel Economy data set from the **AppliedPredictiveModeling** Package.
 - fit the simplest possible model using lm
+
+```{r}
+
+ # this is essentially the mean
+library(MASS)
+fit_simplest <- lm(FE ~ 1,fe)
+```
+
+
 - Use MASS::StepAIC to improve the model using forward stepwise regression
+
+```{r}
+
+# take the entire list of variables and remove the output variable to get the input variables... 
+fe %>% names %>% setdiff("FE") %>% paste(collapse=" + ") -> dependent_variables
+stepAIC_formula <- paste("FE ~ ", dependent_variables)
+
+# stick the input variables into forward AIC
+# AIC fwd works by adding the input variable that reduces AIC most, then repeating that until no further AIC reduction is possible
+# (AIC is a measure of the tradeoff between model perfomance and complexity.)
+step_forward <- stepAIC ( fit_simplest, scope = stepAIC_formula, direction = "forward")
+
+```
+
+
 - Fit the "full" model using lm
 - USe MASS::StepAIC to improve the model using backward stepwise regression 
 
 ```{r}
 
-form <- ~ EngDispl + NumCyl + Transmission + AirAspirationMethod + NumGears + TransLockup + TransCreeperGear + DriveDesc + IntakeValvePerCyl + ExhaustValvesPerCyl + CarlineClassDesc + VarValveTiming + VarValveLift
+# AIC backwards is the opposite... put in all variables first... take one out at a time 
+fit_full <- lm(FE ~ ., fe)
+#stepAIC(fit_full, score = ~1, direction = "backward")
+step_backward <- stepAIC(fit_full, scope = ~1, direction = "backward")
 
- # Your work here
- fit.min <- lm( FE ~ 1, fe )
 
- 
- stepAIC( fit.min.forward, scope = ~ 1, direction = "backward")
- 
- 
- fit.full <- lm( FE ~ ., fe )
- stepAIC( fit.full, score = ~ 1, direction = "backward")
 ```
 
-- Are they the same model? If not why?  Which is better? JUstify your answer.
+- Are they the same model? If not why?  Which is better?
+```{r}
+# The two models are quite similar. Forward has 9 input variables.  Backward has 12.  8 of those are in common.
+step_forward$call
+step_backward$call
+
+# The two models have almost identical parsimony measures, as revealed in the output earlier....
+# forward AIC=3662.66
+# backward AIC=3663.23
+
+# The R-squares are nearly identical also.
+
+#forward StepAIC result 
+summary(lm(formula = FE ~ EngDispl + CarlineClassDesc + DriveDesc + Transmission + 
+    NumCyl + IntakeValvePerCyl + VarValveLift + TransLockup + 
+    NumGears, data = fe))$r.squared
+
+#backward StepAIC result
+summary(lm(formula = FE ~ EngDispl + NumCyl + Transmission + AirAspirationMethod + 
+    NumGears + TransLockup + TransCreeperGear + DriveDesc + ExhaustValvesPerCyl + 
+    CarlineClassDesc + VarValveLift, data = fe))$r.squared
+
+# If simplicity is desired, forward seems preferred as it has fewer input variables. 
+
+```
+
 
 
 
@@ -92,16 +137,16 @@ form <- ~ EngDispl + NumCyl + Transmission + AirAspirationMethod + NumGears + Tr
 ```{r}
 
 logistic <- function(x) { 
-  ... # Your work here  
+  1 / (1 + exp(1)^(-x) ) 
 }
 
-qplot( ... )
+curve(logistic, from=-10, to=10)
 
 logistic_inv <- function(y) { 
-  ... # Your work  
+  - (log((1-y)/y))
 }
 
-qplot(...) 
+curve(logistic_inv, from=0, to=1)
 
 ```
 
@@ -121,8 +166,20 @@ c(0,0.5,1) %>% logistic_inv
 Using the GermanCredit data from the **Caret** package/ UCI Machine Learning Library, create a model for `Class` ("Good" vs. "Bad" ). Show your model performance.  
 
 ```{r}
+#data(GermandCredit) #didn't we already call this?
 
-fit.min.forward
+# take the entire list of variables and remove the output variable to get the input variables... 
+GermanCredit %>% names %>% setdiff("Class") %>% paste(collapse=" + ") -> GermanCredit_dependent_variables
+GermanCredit_stepAIC_formula <- paste("Class ~ ", GermanCredit_dependent_variables)
+
+GermanCredit_fit_simplest <- glm(Class ~ 1, data=GermanCredit, family="binomial")
+german_credit_step_forward <- stepAIC ( GermanCredit_fit_simplest, scope = GermanCredit_stepAIC_formula, direction = "forward")
+
+german_credit_fit_full <- glm(Class ~ ., data=GermanCredit, family="binomial")
+german_credit_step_backward <- stepAIC(german_credit_fit_full, scope = ~1, direction = "backward")
+
+# best model gets a prize!
+# AIC can also use stepAIC
 ```
 
 
@@ -130,6 +187,25 @@ fit.min.forward
 ## Iterative Correlated Feature Removal 
 
 - Implement Kuhn's iterative feature removal function described in **APM** Section 3.5, page 47
+
+
+```{r}
+# 1. Calculate the correlation matrix of the predictors.
+# 2. Determine the two predictors associated with the largest absolute pairwise correlation (call them predictors A and B).
+# 3. Determine the average correlation between A and the other variables. Do the same for predictor B.
+# 4. If A has a larger average correlation, remove it; otherwise, remove predictor B.
+# 5. Repeat Steps 2–4 until no absolute correlations are above the threshold.
+
+Kuhns_removal <- function(myData) {
+  cor_matrix <- cor(myData[sapply(myData, is.numeric)])  # step 1
+  
+}
+
+Kuhns_removal(fe)
+
+#cor(x=fe, y=fe, use="pairwise.complete.obs", na.rm = TRUE, method="kendall") 
+```
+
 
 
 
