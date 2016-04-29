@@ -41,7 +41,7 @@ data(FuelEconomy)     # See ?cars2010
 fe <- dplyr::bind_rows(cars2010, cars2011, cars2012)    # Define Da
 
 
-data("GermanCredit")  # see GermanCredit
+# data("GermanCredit")  # this is called later
 
 ... = NULL  # Needed for aesthetics 
 
@@ -53,27 +53,33 @@ data("GermanCredit")  # see GermanCredit
 
 Using Fuel Economy data set from the **AppliedPredictiveModeling** Package.
 - fit the simplest possible model using lm
-
-```{r}
-
- # this is essentially the mean
-library(MASS)
-fit_simplest <- lm(FE ~ 1,fe)
-```
-
-
 - Use MASS::StepAIC to improve the model using forward stepwise regression
 
 ```{r}
 
-# take the entire list of variables and remove the output variable to get the input variables... 
-fe %>% names %>% setdiff("FE") %>% paste(collapse=" + ") -> dependent_variables
-stepAIC_formula <- paste("FE ~ ", dependent_variables)
+library(MASS)
 
-# stick the input variables into forward AIC
-# AIC fwd works by adding the input variable that reduces AIC most, then repeating that until no further AIC reduction is possible
+# AIC forward works by finding the input variable that reduces AIC most, 
+# adding it, then repeating process until no further AIC reduction is possible
 # (AIC is a measure of the tradeoff between model perfomance and complexity.)
-step_forward <- stepAIC ( fit_simplest, scope = stepAIC_formula, direction = "forward")
+
+stepAIC_fwd_wrapper <- function(outcome_var_name, dataset) {
+  # start with a featureless model.  This is essentially just a mean of the outcome.
+  # eval and parse allow lm to evaluate the variable whose name is contained in the string outcome_var_name
+  fit_simplest <- lm(eval(parse(text = outcome_var_name)) ~ 1, dataset)  
+  # take full list of variables in the fuel economy data, remove outcome variable to get predictors only
+  dataset %>% names %>% setdiff(outcome_var_name) %>% paste(collapse=" + ") -> predictors_only
+  
+  # put outcome back together with predictors in formula 
+  stepAIC_formula <- paste(outcome_var_name, "~", predictors_only)
+  
+  # stick formula into forward AIC
+  stepAIC ( fit_simplest, scope = stepAIC_formula, direction = "forward")
+}
+
+
+
+step_fwd <- stepAIC_fwd_wrapper('FE', fe)
 
 ```
 
@@ -84,43 +90,54 @@ step_forward <- stepAIC ( fit_simplest, scope = stepAIC_formula, direction = "fo
 ```{r}
 
 # AIC backwards is the opposite... put in all variables first... take one out at a time 
-fit_full <- lm(FE ~ ., fe)
-#stepAIC(fit_full, score = ~1, direction = "backward")
-step_backward <- stepAIC(fit_full, scope = ~1, direction = "backward")
+stepAIC_bkwd_wrapper <- function(outcome_var_name, dataset) {
+  fit_full <- lm(FE ~ ., dataset)
+  stepAIC(fit_full, scope = ~1, direction = "backward")
+}
 
+
+
+step_bkwd <- stepAIC_bkwd_wrapper('FE', fe)
 
 ```
 
 - Are they the same model? If not why?  Which is better?
 ```{r}
-# The two models are quite similar. Forward has 9 input variables.  Backward has 12.  8 of those are in common.
-step_forward$call
-step_backward$call
 
-# The two models have almost identical parsimony measures, as revealed in the output earlier....
-# forward AIC=3662.66
-# backward AIC=3663.23
+# Of the 13 predictors, Forward selected 9 while Backward selected 11.  The models are very similar with nearly identical AIC and R-squared.
+# forward AIC=3662.66       R-sq = 0.8190668
+# backward AIC=3663.23       R-sq = 0.8197446
+# 
+# Let's try the loss functions from  the last homework
 
-# The R-squares are nearly identical also.
+root_mean_sqr_error <- function(y,yhat) {
+  ( y - yhat )^2  %>% mean %>% sqrt 
+}
 
-#forward StepAIC result 
-summary(lm(formula = FE ~ EngDispl + CarlineClassDesc + DriveDesc + Transmission + 
-    NumCyl + IntakeValvePerCyl + VarValveLift + TransLockup + 
-    NumGears, data = fe))$r.squared
+mean_abs_error <- function(y, yhat) {
+  ( y - yhat )  %>% abs %>% mean
+}
 
-#backward StepAIC result
-summary(lm(formula = FE ~ EngDispl + NumCyl + Transmission + AirAspirationMethod + 
-    NumGears + TransLockup + TransCreeperGear + DriveDesc + ExhaustValvesPerCyl + 
-    CarlineClassDesc + VarValveLift, data = fe))$r.squared
+median_abs_error <- function(y, yhat) { 
+  ( y - yhat )  %>% abs %>% median
+}
 
-# If simplicity is desired, forward seems preferred as it has fewer input variables. 
+root_mean_sqr_error(fe$FE, predict(step_fwd, fe))
+mean_abs_error(fe$FE, predict(step_fwd, fe))
+median_abs_error(fe$FE, predict(step_fwd, fe))
+
+root_mean_sqr_error(fe$FE, predict(step_bkwd, fe))
+mean_abs_error(fe$FE, predict(step_bkwd, fe))
+median_abs_error(fe$FE, predict(step_bkwd, fe))
+
+# StepAIC Backwards is a better model judging by all three loss functions, though again differences are minor.
 
 ```
 
 
 
 
-## Logsitic and Inverse Logistic Transformation 
+## Logistic and Inverse Logistic Transformation 
 
 - Write an R function for the logistic function. The function should accept a `numeric` vector with values `[-Inf,Inf]` and produce a numeric vector in the the range `[0,1]`.
 
@@ -166,25 +183,58 @@ c(0,0.5,1) %>% logistic_inv
 Using the GermanCredit data from the **Caret** package/ UCI Machine Learning Library, create a model for `Class` ("Good" vs. "Bad" ). Show your model performance.  
 
 ```{r}
-#data(GermandCredit) #didn't we already call this?
 
-# take the entire list of variables and remove the output variable to get the input variables... 
-GermanCredit %>% names %>% setdiff("Class") %>% paste(collapse=" + ") -> GermanCredit_dependent_variables
-GermanCredit_stepAIC_formula <- paste("Class ~ ", GermanCredit_dependent_variables)
+data(GermanCredit) 
 
-GermanCredit_fit_simplest <- glm(Class ~ 1, data=GermanCredit, family="binomial")
-german_credit_step_forward <- stepAIC ( GermanCredit_fit_simplest, scope = GermanCredit_stepAIC_formula, direction = "forward")
+# hmmm... I'll write a Step_AIC wrapper again here because the FE problem above takes lm, while this will require glm.  I'll write a common one some other time.
 
-german_credit_fit_full <- glm(Class ~ ., data=GermanCredit, family="binomial")
-german_credit_step_backward <- stepAIC(german_credit_fit_full, scope = ~1, direction = "backward")
+stepAIC_fwd_bi_wrapper <- function(outcome_var_name, dataset) {
+  bi_fit_simplest <- glm(eval(parse(text = outcome_var_name)) ~ 1, dataset, family="binomial")  
+  dataset %>% names %>% setdiff(outcome_var_name) %>% paste(collapse=" + ") -> predictors_only
+  # put outcome back together with predictors in formula 
+  stepAIC_formula <- paste(outcome_var_name, "~", predictors_only)
+  # stick formula into forward AIC
+  stepAIC ( bi_fit_simplest, scope = stepAIC_formula, direction = "forward")
+}
 
-# best model gets a prize!
-# AIC can also use stepAIC
+
+
+GermanCreditFwd <- stepAIC_fwd_bi_wrapper('Class', GermanCredit)
+
+
+
+stepAIC_bkwd_bi_wrapper <- function(outcome_var_name, dataset) {
+  fit_full <- glm(Class ~ ., data=dataset, family="binomial")
+  stepAIC(fit_full, scope = ~1, direction = "backward")
+}
+
+
+
+GermanCreditBkwd <- stepAIC_bkwd_bi_wrapper('Class', GermanCredit)
+
+
+
+# This calcuates a simple accuracy rate... correct / all observations
+
+accuracy_rate <- function(y,yhat) {
+  ifelse(y==yhat, 1, 0) %>% mean 
+}
+
+good_or_bad <- function(yhat) {
+  ifelse((logistic(yhat)>=.5), "Good", "Bad")
+}
+
+
+
+accuracy_rate(GermanCredit$Class, predict(GermanCreditFwd, GermanCredit) %>% good_or_bad)
+accuracy_rate(GermanCredit$Class, predict(GermanCreditBkwd, GermanCredit) %>% good_or_bad)
+
+# Again, the backward model is just a tiny bit better.  Our accuracy exceeds the baseline accuracy rate of 70 % on recommended by Kuhn p. 73.
 ```
 
 
 
-## Iterative Correlated Feature Removal 
+## Iterative Correlated Feature Removal (Optional)
 
 - Implement Kuhn's iterative feature removal function described in **APM** Section 3.5, page 47
 
@@ -203,7 +253,6 @@ Kuhns_removal <- function(myData) {
 
 Kuhns_removal(fe)
 
-#cor(x=fe, y=fe, use="pairwise.complete.obs", na.rm = TRUE, method="kendall") 
 ```
 
 
