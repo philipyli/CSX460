@@ -1,7 +1,7 @@
 ---
 title: "Sensitivity and Specificity"
-author: "Your Name Here"
-date: "October 5, 2015"
+author: "Phil Li"
+date: "May 2, 2016"
 output: html_document
 ---
 
@@ -35,25 +35,20 @@ for( nm in packs ) {
 `x` is a random variable. We want to not only know what the `mean(x)` is but want to calculate the uncertainty of `mean(x)`.  Measuring the uncertainty requires repeated measurements of `mean(x)`.
 
 - Calculate the mean of `x`.
-- Calculte the `sd( mean(x) )` using the **using 10-fold cross-validation**.  Create your own folds, show your work. (An example is for the Bootstrap is given as a hint. )
+- Calculate the `sd( mean(x) )` using the **using 10-fold cross-validation**.  Create your own folds, show your work. (An example is for the Bootstrap is given as a hint. )
 
 
 ```{r}
 set.seed(1) 
-x <- runif(20,1,20)
-
-x_mean = mean(x)
-
-k=10
+x <- runif(20,1,20)  # from a uniform dist, select 20 numbers from 1 to 20
+k <- 10
 
 # CROSS-VALIDATION
-# ... YOUR WORK HWEW
-
-sd_cv <- .. # YOUR ANSWER HERE
+sd_cv <- sapply(1:k, function(i) sample(x,size=length(x)/k*(k-1),replace=FALSE) %>% mean ) %>% sd 
 
 
 # BOOTSTRAP (EXAMPLE)
-sd_boot <- sapply(1:k, function(i) sample(x,replace=TRUE) %>% mean ) %>% sd
+sd_boot <- sapply(1:k, function(i) sample(x,replace=TRUE) %>% mean ) %>% sd # implies n = 20 
 
 ```
 
@@ -72,13 +67,15 @@ set.seed(1)
 data(iris)
 
 qplot( data=iris, x=Petal.Length, y=Sepal.Length, color=Species )
+qplot( data=iris, x=Petal.Width, y=Sepal.Length, color=Species )
+qplot( data=iris, x=Petal.Width, y=Sepal.Width, color=Species )
 
 # Create Dependent Variable
 iris$Versicolor <- 
   ifelse( iris$Species == 'versicolor', "versicolor", "other" ) %>% as.factor
 iris$Species = NULL 
 
-wh <- sample.int( nrow(iris), size=nrow(iris)/2 )
+wh <- sample.int( nrow(iris), size=nrow(iris)/2 )  # splitting data set into two
 train <- iris[ wh,]
 test <- iris[ -wh, ]
 
@@ -105,36 +102,73 @@ The functions should take two logical vectors of the same length, `y` and `yhat`
 
 ```{r}
 
-prevalence = function(y,yhat) {}
-accuracy   =  .. 
-error_rate = ..
-tpr = ..
-fpr = ..      # See Example
-tnr = ..
-sensitivity = ..
-specificity = ..
-recall = .. 
-precision = ..
+prevalence = function(y,yhat)
+  ifelse(y,1,0) %>% mean    # yhat is not necessary here
+
+accuracy = function(y,yhat) 
+  ifelse(yhat==y,1,0) %>% mean
+
+error_rate = function(y,yhat) 
+  ifelse(yhat!=y,1,0) %>% mean
+
+tpr = function(y,yhat) 
+  sum(y & yhat) / # TP
+  sum(y)          # P
+
+#fpr = ..      # See Example
+
+tnr = function(y,yhat) 
+  sum(!y & !yhat) / # TN
+  sum(!y)          # N
+
+sensitivity = tpr
+specificity = tnr
+recall = tpr
+precision = tpr
 
 # EXAMPLE: fpr
 # The FPR is THE NUMBER OF FALSE POSITIVES / NEGATIVES (TN+FP)
 
 threshold = 0.5 
 y = test$Versicolor == 'versicolor'
-yhat = predict(fit.glm, test, type="response") > threshold
-
+yhat = predict(fit.glm, test, type="response") > threshold  # predict yields probability
 
 fpr = function(y,yhat)
   sum(y & (y != yhat) ) / # FP
   sum(! y)                # N
 
+prevalence(y,yhat)
+accuracy(y,yhat)
+error_rate(y,yhat)
+tpr(y,yhat)
 fpr(y,yhat)
+tnr(y,yhat)
 
 ```
 
 - What is wrong with the modeling approach used?
 
+```{r}
+# fit.glm is a poor model for versicolor.  It yields decent performance for true negatives, 
+# but is otherwise mediocre at best.
+iris$yhat <- yhat
+qplot( data=iris, x=Petal.Length, y=Sepal.Length, color=yhat )
+qplot( data=iris, x=Petal.Width, y=Sepal.Length, color=yhat )
+qplot( data=iris, x=Petal.Width, y=Sepal.Width, color=yhat )
 
+# You can do much better across all metrics by noticing that Petal.Length of versicolor
+# falls almost perfectly within a narrow range between 3 and 5, regardless of what the other
+# factors are.  (Refer to first three graphs above.)
+test_versicolor <- subset(test, Versicolor == 'versicolor')
+versicolor_petal_length_max <- max(test_versicolor$Petal.Length)
+versicolor_petal_length_min <- min(test_versicolor$Petal.Length)
+yhat_better <- (versicolor_petal_length_min <= test$Petal.Length &
+                        test$Petal.Length <= versicolor_petal_length_max)
 
+accuracy(y,yhat_better)
+error_rate(y,yhat_better)
+tpr(y,yhat_better)
+fpr(y,yhat_better)
+tnr(y,yhat_better)
 
-
+```
