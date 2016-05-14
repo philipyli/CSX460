@@ -1,7 +1,7 @@
 ---
 title: "05-exercises"
-author: "Your Name Here"
-date: "2016-05-xx"
+author: "Phil Li"
+date: "2016-05-09"
 output: html_document
 ---
 
@@ -14,7 +14,7 @@ packs <-  c('ggplot2', 'magrittr', 'dplyr', 'caret', 'AppliedPredictiveModeling'
 
 for( nm in packs ) { 
   # message(nm)
-  if( ! nm  %in% installed.packages()[,1]  ) install.packages(nm)
+  if( ! nm  %in% installed.packages()[,1]  ) install.packages(nm, repos='http://cran.cnr.berkeley.edu/')
   library(nm, character.only = TRUE)
 }
 
@@ -36,16 +36,17 @@ Revisit the GermanCredit data. Use `caret` to build models of `Class` using the 
 
 Save the caret objects with the names provided.
 
-```{r}
+```{r, warning=FALSE }
 
-# Your work here. 
+data("GermanCredit") 
+ctrl <- trainControl(method = "boot", classProb = TRUE, savePredictions = TRUE)
 
-fit.glm <- ..
-fit.knn <- ..
-fit.rpart <- ..
-fit.rf <- ..
-fit.myown <- ..
-
+fit.glm <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method="glm", family="binomial") 
+fit.rpart <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method="rpart")
+fit.knn <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method="knn")
+fit.ctree <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method="ctree")
+fit.rf <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method = "rf")
+fit.gbm <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method = "gbm", verbose=FALSE)
 
 ````
 
@@ -58,19 +59,126 @@ Show your work!
 
 ```{r}
 
-.. # YOUR WORK HERE
+myMatrix <- function(fit) {
+  table(fit$pred$pred, fit$pred$obs) %>% confusionMatrix()
+}
+
+myMatrix(fit.glm)
+myMatrix(fit.rpart)
+myMatrix(fit.knn)
+myMatrix(fit.ctree)
+myMatrix(fit.rf)
+myMatrix(fit.gbm)
+
+install.packages("devtools", repos='http://cran.cnr.berkeley.edu/')
+library(devtools)
+install_github('decisionpatterns/caret.tools')
+library(caret.tools)
+
+caret.tools:::roc.train(fit.glm) %>% plot
+caret.tools:::roc.train(fit.rpart) %>% plot
+caret.tools:::roc.train(fit.knn) %>% plot
+caret.tools:::roc.train(fit.ctree) %>% plot
+caret.tools:::roc.train(fit.rf) %>% plot
+caret.tools:::roc.train(fit.gbm) %>% plot
 
 ```
 
 
 Q: Which models would you select based on these tools?
 
+
+```{r, warning=FALSE }
+
+# Based on key stats like accuracy, kappa, sensitivity, specificity, and auc, the top 3 of 6 models are glm, rf, and gbm
+# I will tune those three models further below.
+
+# I ran stepAIC to select features for the "tuned" glm model below.  I then commented stepAIC out to save time in RMarkdown
+#fit.glmstepAIC <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method="glmStepAIC", family="binomial")
+
+fit.glmTuned <- train( Class ~ Duration + Amount + InstallmentRatePercentage + Age + 
+    ForeignWorker + CheckingAccountStatus.lt.0 + CheckingAccountStatus.0.to.200 + 
+    CheckingAccountStatus.gt.200 + CreditHistory.NoCredit.AllPaid + 
+    CreditHistory.ThisBank.AllPaid + CreditHistory.PaidDuly + 
+    CreditHistory.Delay + Purpose.NewCar + Purpose.Furniture.Equipment + 
+    Purpose.Radio.Television + Purpose.Repairs + Purpose.Education + 
+    Purpose.Business + SavingsAccountBonds.lt.100 + SavingsAccountBonds.100.to.500 + 
+    EmploymentDuration.4.to.7 + Personal.Male.Single + OtherDebtorsGuarantors.None + 
+    OtherDebtorsGuarantors.CoApplicant + OtherInstallmentPlans.Bank + 
+    Housing.Rent, data=GermanCredit, trControl=ctrl, method="glm", family="binomial" )
+fit.rfTuned <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method = "rf", tuneLength=5)
+fit.gbmTuned <- train( Class ~ ., data=GermanCredit, trControl=ctrl, method="gbm", verbose=FALSE, tuneLength=5)
+
+myMatrix(fit.glmTuned)
+myMatrix(fit.rfTuned)
+myMatrix(fit.gbmTuned)
+
+caret.tools:::roc.train(fit.glmTuned) %>% plot
+caret.tools:::roc.train(fit.rfTuned) %>% plot
+caret.tools:::roc.train(fit.gbmTuned) %>% plot
+
+# The glm has the best kappa, sensitivity, and auc... rf has the strongest specificity, and is probably better for performance reasons (tree instead of regression... parallelizable)
+
+```
+
 Q: If you assume that a `Class=="bad""` is 10 more costly than `Class=="good"`, determine your threshold for the model of your choice.  Show your work.
 
 
 ```{r}
 
-.. # YOUR WORK HERE
+countFalseNegatives <- function(fit, threshold) {
+   sum((fit$pred$Bad > threshold) & (fit$pred$obs == "Good"))
+}
 
+countFalsePositives <- function(fit, threshold) {
+   sum((fit$pred$Bad <= threshold) & (fit$pred$obs == "Bad"))
+}
+
+# a false positive is 10x more costly than a false negative
+errorCost <- function(fit, threshold) {
+  countFalseNegatives(fit, threshold) + 10*countFalsePositives(fit, threshold)
+}
+
+# adjust post-modelling treshold to find minimal cost
+
+# glm ideal threshold is .03
+errorCost(fit.glmTuned, .01)
+errorCost(fit.glmTuned, .02)
+errorCost(fit.glmTuned, .025)
+errorCost(fit.glmTuned, .03)
+errorCost(fit.glmTuned, .035)
+errorCost(fit.glmTuned, .04)
+errorCost(fit.glmTuned, .05)
+errorCost(fit.glmTuned, .06)
+errorCost(fit.glmTuned, .1)
+errorCost(fit.glmTuned, .2)
+errorCost(fit.glmTuned, .4)
+errorCost(fit.glmTuned, .6)
+errorCost(fit.glmTuned, .8)
+
+
+# rf ideal threshold is .06
+errorCost(fit.rfTuned, .02)
+errorCost(fit.rfTuned, .04)
+errorCost(fit.rfTuned, .05)
+errorCost(fit.rfTuned, .055)
+errorCost(fit.rfTuned, .06)
+errorCost(fit.rfTuned, .1)
+errorCost(fit.rfTuned, .2)
+errorCost(fit.rfTuned, .4)
+errorCost(fit.rfTuned, .6)
+errorCost(fit.rfTuned, .8)
+
+# gbm ideal threshold is .055
+errorCost(fit.gbmTuned, .02)
+errorCost(fit.gbmTuned, .04)
+errorCost(fit.gbmTuned, .05)
+errorCost(fit.gbmTuned, .055)
+errorCost(fit.gbmTuned, .06)
+errorCost(fit.gbmTuned, .1)
+errorCost(fit.gbmTuned, .2)
+errorCost(fit.gbmTuned, .4)
+errorCost(fit.gbmTuned, .6)
+errorCost(fit.gbmTuned, .8)
 
 ```
