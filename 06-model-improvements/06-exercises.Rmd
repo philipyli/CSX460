@@ -12,13 +12,13 @@ output: html_document
 - **APM** Chapter 13.2 & 13.4 "Non-Linear Classifcation Models"
 
 
-```{r,echo=FALSE}
+```{r,echo=FALSE, warning=FALSE }
 
 packs <-  c('AppliedPredictiveModeling', 'ggplot2', 'magrittr', 'dplyr')
 
 for( nm in packs ) { 
   # message(nm)
-  if( ! nm  %in% installed.packages()[,1]  ) install.packages(nm)
+  if( ! nm  %in% installed.packages()[,1]  ) install.packages(nm, repos='http://cran.cnr.berkeley.edu/')
   library(nm, character.only = TRUE)
 }
 
@@ -38,36 +38,46 @@ This week we return to the Fuel Economy Data having learned much about model bui
 
 Start by making choosing a metric and making a naive guess of model performance: 
 
-Metric: _______________
-Naive Guess: _______________
-Expected Model Performance (based on Naive Guess): _______________
+Metric: *RMSE* 
+Naive Guess: *35.03823* 
+Expected Model Performance (based on Naive Guess): *8.096176* 
 
 Show your work below for the calculations
 
 ```{r} 
 
-  
-naive_guess = ..
+# from hw 2
 
-err_naive_guess = ..
+naive_guess <- mean(FE$FE)
 
+rmse <- function(y,yhat) {
+  ( y - yhat )^2  %>% mean %>% sqrt 
+}
+
+err_naive_guess <- rmse(FE$FE, naive_guess)
+err_naive_guess 
 ```
 
 
-Based only your intuition, how low do your think you can get your metric: ___________
+Based only your intuition, how low do your think you can get your metric: 
+*Let's try to get it down to 3...* 
 
 
 ## Examine your data
 
  * Plot your response/outcome 
 
- * Make a guess of a strong predictor: _________________  
+ * Make a guess of a strong predictor: _There're three with a relatively wide range of values (EngDispl, NumCyl, and NumGears), I'm putting my money on EngDispl._
  * Plot your response vs your predictor. 
 
 ```{r}
 
-.. # Your work here
+qplot( y=FE$FE, x=FE$EngDispl ) + geom_hline(yintercept=naive_guess)
+qplot( y=FE$FE, x=FE$NumCyl ) + geom_hline(yintercept=naive_guess)
+qplot( y=FE$FE, x=FE$NumGears ) + geom_hline(yintercept=naive_guess)
 
+# Yep, EngDispl looks pretty tight!
+  
 ```
 
 
@@ -77,30 +87,69 @@ Based only your intuition, how low do your think you can get your metric: ______
 Using **caret**, build a simple linear model and a simple tree model. 
 
 ```{r}
+install.packages("caret", repos='http://cran.cnr.berkeley.edu/')
+library(caret)
+ctrl <- trainControl(method = "boot")
 
-fit.lm <- .. # Your model here
-fit.rp <- .. # Your model here
-
+fit.lm <- train( FE ~ ., data=FE, trControl=ctrl, method="lm")
+fit.lm$results  # RMSE=3.6665516
+fit.rp <- train( FE ~ ., data=FE, trControl=ctrl, method="rpart")
+fit.rp$results  # RMSE=4.782416
 ```
 
 
 What did you learn about the data from these models.
-
+*Simple lm is pretty good.  We'll have to work on the trees some more.*
 
 
 ## Build More Advanced Models
 
-Now refine your models. Use **caret** to build advanced models:
+Now refine your models. 
+```{r, warning=FALSE}
+# First, let's refine lm.
+fit.lmTuned <- train( FE ~ ., data=FE, trControl=ctrl, method="lmStepAIC",  verbose=FALSE)
+fit.lm$results #RMSE = 3.653201
+# StepAIC offers no improvement over lm.
+
+# Next, let's tune rp.
+plot(fit.rp)
+# let's put more data points in the tuneGrid to see the performance curve better. 
+rpart.grid <- expand.grid(.cp=c(.00000001,.0000001,.000001,.00001,.0001,.001,.002,.0025,.003,.005,.01,.02,.04,.06355975,.13451886)) 
+fit.rpTuned <- train( FE ~ ., data=FE, trControl=ctrl, method="rpart", tuneGrid=rpart.grid)
+plot(fit.rpTuned)
+# Looks like RMS error keeps decreasing as complexity goes up (ie as complexity parameter (cp) approaches 0).  
+# There's no obvious minimum to the curve, so use "one-standard error" method (Kuhn, p. 75).
+fit.rpTuned <- train( FE ~ ., data=FE, trControl=ctrl, method="rpart1SE")
+library(maptree)
+draw.tree(fit.rpTuned$finalModel, nodeinfo = FALSE) # 6 terminal nodes... reasonable complexity
+fit.rpTuned$results #  RMSE = 4.142186, pretty bad
+```
+
+
+
+Use **caret** to build advanced models:
 - one that uses model averaging (bagging) 
 - one that uses boosting 
 
-```{r}
+```{r, warning=FALSE }
+# For bagged trees, Kuhn talks about ipred (p. 215), which is listed as treebag on the caret model list.
+fit.treebag <- train( FE ~ ., data=FE, trControl=ctrl, method="treebag")  
+fit.treebag$results # RMSE = 3.940785, not as good as lm.
 
-# Your work here.
-fit.bag   <- .. # bagging model 
+fit.gbm <- train( FE ~ ., data=FE, trControl=ctrl, method="gbm", verbose=FALSE) 
+fit.gbm$results # RMSE = 3.283187, BEST SO FAR!
+plot(fit.gbm)
 
-fit.boost <- .. # boosting model
-
+# started with parameters from p. 217... kept tuning
+# more trees, deeper should help
+gbm.grid <- expand.grid(
+              .shrinkage = .1,
+              .interaction.depth = 7,
+              .n.minobsinnode = 10,
+              .n.trees = 350
+              )
+fit.gbmTuned <- train( FE ~ ., data=FE, trControl=ctrl, method="gbm", verbose=FALSE, tuneGrid=gbm.grid) 
+fit.gbmTuned$results #RMSE = 2.889891
 
 ```
 
@@ -109,3 +158,4 @@ fit.boost <- .. # boosting model
 
 Which model would you use and why?  Under different circumstances why would you choose one of the other models.
 
+_gbm has the best performance.  We hit our target of under 3.  However, gbm is quite an opaque model.  If explainability is important, rpart and lm might be better._
